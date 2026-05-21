@@ -57,7 +57,7 @@ STATE_FILE = SCRIPT_DIR / ".processed.json"
 LOG_FILE = SCRIPT_DIR / "run_log.csv"
 ERRORS_DIR = SCRIPT_DIR / "errors"
 
-CLAUDE_MODEL = "claude-sonnet-4-5"
+CLAUDE_MODEL = "claude-haiku-4-5-20251001"  # was claude-sonnet-4-5; Haiku is ~5x faster, ~10x cheaper, fine for this domain
 DATA_ENTRY = "Shaurya"
 
 PER_FILE_CHAR_LIMIT = 30_000

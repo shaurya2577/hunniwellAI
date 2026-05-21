@@ -35,4 +35,9 @@ EVENT_LAYOUTS: dict[str, dict] = {
     # LSI 2026 events (Jujama platform): companies at depth 1
     "LSI 2026 - USA (260320)":  {"layout": "flat"},
     "LSI 2026 - ASia (260703)": {"layout": "flat"},
+
+    # "Innovator" is a separate local scrape that's part of JPM 2026 in the OneDrive
+    # file registry. Kept as its own folder because it has its own nested layout
+    # (15 dev-stage subdirs: Concept, Prototype Developed, Market Ready, ...).
+    "Innovator": {"layout": "nested"},
 }
