@@ -1,0 +1,490 @@
+#!/usr/bin/env python3
+"""
+ingest.py — Company Files → Airtable ingestion tool
+
+Walks /Users/sbhartia/Documents/Hunniwell/<EVENT>/<COMPANY>/, reads every
+PDF / DOCX / PPTX / TXT / MD inside each company folder, asks Claude to extract
+a strict-schema JSON record, and POSTs it to Airtable. Re-runs skip companies
+already recorded in .processed.json.
+
+Setup:
+    cd /Users/sbhartia/Dev/Hunniwell/airtable_ingest
+    python3 -m venv .venv && source .venv/bin/activate
+    pip install -r requirements.txt
+    cp .env.example .env   # then fill in keys
+
+Required env vars (loaded from .env in the script directory):
+    ANTHROPIC_API_KEY
+    AIRTABLE_API_KEY        Airtable personal access token
+    AIRTABLE_BASE_ID        e.g. appqYNxEg8JJkY4h5
+    AIRTABLE_TABLE_NAME     table name or table ID (tbl...)
+
+Run:
+    python ingest.py                       # full run, writes to Airtable
+    python ingest.py --dry-run             # print JSON, no Airtable writes
+    python ingest.py --event "JPM 2026 (260115)"   # restrict to one event folder
+    python ingest.py --company "Auvi Labs"         # restrict to one company
+    python ingest.py --reset-state         # clear .processed.json
+"""
+
+import argparse
+import csv
+import json
+import os
+import re
+import sys
+import time
+from pathlib import Path
+from urllib.parse import quote
+
+import anthropic
+import requests
+from docx import Document
+from dotenv import load_dotenv
+from pptx import Presentation
+from pypdf import PdfReader
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+load_dotenv(SCRIPT_DIR / ".env")
+
+ROOT = Path("/Users/sbhartia/Documents/Hunniwell")
+STATE_FILE = SCRIPT_DIR / ".processed.json"
+LOG_FILE = SCRIPT_DIR / "run_log.csv"
+ERRORS_DIR = SCRIPT_DIR / "errors"
+
+CLAUDE_MODEL = "claude-sonnet-4-5"
+DATA_ENTRY = "Shaurya"
+
+PER_FILE_CHAR_LIMIT = 30_000
+TOTAL_CHAR_LIMIT = 120_000
+
+READABLE_EXTS = {".pdf", ".docx", ".pptx", ".txt", ".md"}
+
+# JSON key from Claude -> exact Airtable field name
+FIELD_MAP = {
+    "company": "Company",
+    "event": "Event",
+    "data_entry": "Data Entry",
+    "iata_code": "IATA Code",
+    "country": "Country",
+    "short_description": "Short Description / Key technology",
+    "medical_field": "Medical Field",
+    "indication": "Indication",
+    "class_of_device": "Class of Device",
+    "regulatory_pathway": "Regulatory Pathway",
+    "dev_stage": "Dev. Stage",
+    "dev_stage_details": "Dev Stage Details",
+    "equity_raised_m": "Equity Raised ($M)",
+    "coming_round": "Coming Round",
+    "size_of_round_m": "Size of Round ($M)",
+    "est_close": "Est. Close (Month/Year) ",  # note: Airtable field has a trailing space
+    "key_executives": "Key Executive(s)",
+    "ceo_email": "CEO's Email",
+    "ceo_cell": "CEO's Cell #",
+    "company_notes": "Company Notes",
+    "url": "Url",
+    "address": "Address",
+}
+
+# Explicit overrides for event folder names that don't follow the "Name (NNNNNN)" pattern.
+EVENT_MAP: dict[str, str] = {}
+
+# Whitelist of event folders to process and their nesting layout.
+# "flat":   <event>/<company>/<files>
+# "nested": <event>/<category>/<company>/<files>   (event label becomes "Event - Category")
+# Folders not in this dict are skipped when --event is not given.
+EVENT_LAYOUTS: dict[str, str] = {
+    "LSI4082026": "flat",
+    "OpenRounds2": "flat",
+    "apacspotlight2": "flat",
+    "apacVirtual2(2)": "flat",
+    "RESI": "nested",
+    "Innovator": "nested",
+}
+
+SYSTEM_PROMPT = """You are extracting structured data about a single medtech company from raw text dumped out of the company's deck and any summary documents. Return only a JSON object matching the schema below — no prose, no markdown fences.
+
+Strict rule: If the provided text does not clearly support a field, omit that key entirely. Do not infer, do not guess, do not fill from general knowledge. Leaving a field blank is correct and expected.
+
+Schema keys (all values must be strings):
+iata_code, country, short_description, medical_field, indication, class_of_device, regulatory_pathway, dev_stage, dev_stage_details, equity_raised_m, coming_round, size_of_round_m, est_close, key_executives, ceo_email, ceo_cell, company_notes, url, address.
+
+- short_description must be 2–4 sentences in your own words, never copied from the deck.
+- medical_field and indication: comma-separated string if multiple values apply (e.g. "Nephrology, Vascular Surgery, Dialysis").
+- equity_raised_m and size_of_round_m: decimal millions as a string (e.g. "0.10", "1.0").
+- est_close: format MM/YYYY.
+- company_notes captures other diligence-relevant signal (investors, IP, prior products, headcount, market sizing). Omit if nothing notable remains.
+"""
+
+
+def derive_event(folder_name: str) -> str:
+    if folder_name in EVENT_MAP:
+        return EVENT_MAP[folder_name]
+    return re.sub(r"\s*\(\d{6}\)\s*$", "", folder_name).strip()
+
+
+def extract_pdf(path: Path) -> str:
+    try:
+        reader = PdfReader(str(path))
+        parts = []
+        for page in reader.pages:
+            try:
+                parts.append(page.extract_text() or "")
+            except Exception:
+                continue
+        return "\n".join(parts)
+    except Exception as e:
+        print(f"  [warn] PDF extract failed for {path.name}: {e}")
+        return ""
+
+
+def extract_docx(path: Path) -> str:
+    try:
+        doc = Document(str(path))
+        parts = [p.text for p in doc.paragraphs if p.text]
+        for tbl in doc.tables:
+            for row in tbl.rows:
+                cells = [c.text.strip() for c in row.cells if c.text.strip()]
+                if cells:
+                    parts.append(" | ".join(cells))
+        return "\n".join(parts)
+    except Exception as e:
+        print(f"  [warn] DOCX extract failed for {path.name}: {e}")
+        return ""
+
+
+def extract_pptx(path: Path) -> str:
+    try:
+        prs = Presentation(str(path))
+        parts = []
+        for i, slide in enumerate(prs.slides, 1):
+            parts.append(f"--- Slide {i} ---")
+            for shape in slide.shapes:
+                try:
+                    if shape.has_text_frame:
+                        text = shape.text_frame.text
+                        if text:
+                            parts.append(text)
+                except Exception:
+                    continue
+            try:
+                if slide.has_notes_slide:
+                    notes = slide.notes_slide.notes_text_frame.text
+                    if notes:
+                        parts.append(f"[notes] {notes}")
+            except Exception:
+                pass
+        return "\n".join(parts)
+    except Exception as e:
+        print(f"  [warn] PPTX extract failed for {path.name}: {e}")
+        return ""
+
+
+def extract_text_file(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="ignore")
+    except Exception as e:
+        print(f"  [warn] text read failed for {path.name}: {e}")
+        return ""
+
+
+EXTRACTORS = {
+    ".pdf": extract_pdf,
+    ".docx": extract_docx,
+    ".pptx": extract_pptx,
+    ".txt": extract_text_file,
+    ".md": extract_text_file,
+}
+
+
+def collect_company_text(company_dir: Path) -> str:
+    files: list[Path] = []
+    for path in company_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        rel_depth = len(path.relative_to(company_dir).parts)
+        if rel_depth > 2:
+            continue
+        if path.suffix.lower() in READABLE_EXTS:
+            files.append(path)
+
+    chunks: list[str] = []
+    total = 0
+    for f in sorted(files):
+        text = EXTRACTORS[f.suffix.lower()](f)
+        if not text.strip():
+            continue
+        text = text[:PER_FILE_CHAR_LIMIT]
+        header = f"\n\n=== {f.relative_to(company_dir)} ===\n"
+        remaining = TOTAL_CHAR_LIMIT - total
+        if remaining <= len(header):
+            break
+        if len(header) + len(text) > remaining:
+            text = text[: remaining - len(header)]
+        chunks.append(header + text)
+        total += len(header) + len(text)
+        if total >= TOTAL_CHAR_LIMIT:
+            break
+    return "".join(chunks)
+
+
+def _strip_fences(s: str) -> str:
+    s = s.strip()
+    if s.startswith("```"):
+        s = re.sub(r"^```(?:json)?\s*", "", s)
+        s = re.sub(r"\s*```$", "", s)
+    return s.strip()
+
+
+def _coerce_value(v) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, list):
+        return ", ".join(str(x).strip() for x in v if str(x).strip())
+    if isinstance(v, (dict,)):
+        return json.dumps(v, ensure_ascii=False)
+    return str(v).strip()
+
+
+def call_claude(client: anthropic.Anthropic, company_name: str, text_blob: str) -> dict:
+    user_msg = f"Company folder name: {company_name}\n\n{text_blob}"
+    last_transport_err = None
+    raw_content = ""
+    for attempt in range(2):
+        try:
+            resp = client.messages.create(
+                model=CLAUDE_MODEL,
+                max_tokens=2000,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_msg}],
+                timeout=120.0,
+            )
+            text_pieces = [
+                getattr(b, "text", "")
+                for b in getattr(resp, "content", [])
+                if getattr(b, "type", None) == "text" and getattr(b, "text", None)
+            ]
+            if not text_pieces:
+                stop_reason = getattr(resp, "stop_reason", None)
+                raise ValueError(f"Claude returned no text content (stop_reason={stop_reason})")
+            raw_content = "".join(text_pieces)
+            cleaned = _strip_fences(raw_content)
+            return json.loads(cleaned)
+        except (anthropic.APIConnectionError, anthropic.APITimeoutError, anthropic.RateLimitError) as e:
+            last_transport_err = e
+            if attempt == 0:
+                time.sleep(5)
+                continue
+            raise
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Claude returned non-JSON. Raw: {raw_content[:1000]}") from e
+    if last_transport_err:
+        raise last_transport_err
+    raise RuntimeError("call_claude: unreachable")
+
+
+def write_airtable(record: dict, base_id: str, table: str, api_key: str) -> str:
+    fields = {}
+    for json_key, val in record.items():
+        airtable_name = FIELD_MAP.get(json_key)
+        if not airtable_name:
+            continue
+        coerced = _coerce_value(val)
+        if not coerced:
+            continue
+        fields[airtable_name] = coerced
+    payload = {"fields": fields}
+
+    url = f"https://api.airtable.com/v0/{base_id}/{quote(table, safe='')}"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    for attempt in range(2):
+        r = requests.post(url, headers=headers, json=payload, timeout=30)
+        if r.status_code in (200, 201):
+            return r.json()["id"]
+        if r.status_code in (429, 500, 502, 503, 504) and attempt == 0:
+            time.sleep(5)
+            continue
+        raise RuntimeError(f"Airtable {r.status_code}: {r.text}")
+    raise RuntimeError("Airtable retries exhausted")
+
+
+def load_state(path: Path) -> set[str]:
+    if path.exists():
+        try:
+            return set(json.loads(path.read_text()))
+        except Exception:
+            return set()
+    return set()
+
+
+def save_state(state: set[str], path: Path) -> None:
+    path.write_text(json.dumps(sorted(state), indent=2))
+
+
+def iter_event_companies(event_folder: Path):
+    """Yield (company_dir, state_key, event_label) tuples for an event folder,
+    honoring EVENT_LAYOUTS (flat vs nested). Unknown folders default to flat."""
+    layout = EVENT_LAYOUTS.get(event_folder.name, "flat")
+    base_event = derive_event(event_folder.name)
+    if layout == "nested":
+        for cat in sorted(p for p in event_folder.iterdir() if p.is_dir()):
+            for comp in sorted(p for p in cat.iterdir() if p.is_dir()):
+                yield (
+                    comp,
+                    f"{event_folder.name}/{cat.name}/{comp.name}",
+                    f"{base_event} - {cat.name}",
+                )
+    else:  # flat
+        for comp in sorted(p for p in event_folder.iterdir() if p.is_dir()):
+            yield (
+                comp,
+                f"{event_folder.name}/{comp.name}",
+                base_event,
+            )
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Walk CompanyFiles/ and ingest each company into Airtable.")
+    ap.add_argument("--dry-run", action="store_true", help="Print JSON instead of POSTing to Airtable.")
+    ap.add_argument("--event", help="Restrict to a single event folder (exact folder name). Bypasses the EVENT_LAYOUTS whitelist.")
+    ap.add_argument("--company", help="Restrict to a single company folder (exact folder name).")
+    ap.add_argument("--reset-state", action="store_true", help="Delete the state file and exit.")
+    ap.add_argument("--state-file", help="Override state file path (default: .processed.json next to ingest.py). Use a separate path to run parallel processes safely.")
+    ap.add_argument("--log-file", help="Override run-log CSV path (default: run_log.csv next to ingest.py).")
+    args = ap.parse_args()
+
+    state_path = Path(args.state_file).resolve() if args.state_file else STATE_FILE
+    log_path = Path(args.log_file).resolve() if args.log_file else LOG_FILE
+
+    if args.reset_state:
+        if state_path.exists():
+            state_path.unlink()
+            print(f"Removed {state_path}")
+        else:
+            print("No state file to remove.")
+        return
+
+    if not ROOT.exists() or not ROOT.is_dir():
+        print(f"ERROR: {ROOT} does not exist or is not a directory.")
+        sys.exit(1)
+
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+    airtable_key = os.environ.get("AIRTABLE_API_KEY")
+    base_id = os.environ.get("AIRTABLE_BASE_ID")
+    table_name = os.environ.get("AIRTABLE_TABLE_NAME")
+
+    if not anthropic_key:
+        print("ERROR: ANTHROPIC_API_KEY not set.")
+        sys.exit(1)
+    if not args.dry_run and not all([airtable_key, base_id, table_name]):
+        print("ERROR: AIRTABLE_API_KEY / AIRTABLE_BASE_ID / AIRTABLE_TABLE_NAME must be set for non-dry runs.")
+        sys.exit(1)
+
+    client = anthropic.Anthropic(api_key=anthropic_key)
+    state = load_state(state_path)
+    ERRORS_DIR.mkdir(exist_ok=True)
+
+    log_exists = log_path.exists()
+    log_fh = log_path.open("a", newline="", encoding="utf-8")
+    log_writer = csv.writer(log_fh)
+    if not log_exists:
+        log_writer.writerow(
+            ["company_folder", "event", "status", "airtable_record_id", "error", "fields_populated", "fields_left_blank"]
+        )
+
+    all_event_folders = sorted(p for p in ROOT.iterdir() if p.is_dir())
+    if args.event:
+        event_folders = [p for p in all_event_folders if p.name == args.event]
+        if not event_folders:
+            print(f"No event folder matching '{args.event}'.")
+            log_fh.close()
+            sys.exit(1)
+    else:
+        # Default: only process folders explicitly whitelisted in EVENT_LAYOUTS.
+        event_folders = [p for p in all_event_folders if p.name in EVENT_LAYOUTS]
+        skipped = [p.name for p in all_event_folders if p.name not in EVENT_LAYOUTS]
+        if skipped:
+            print(f"Skipping {len(skipped)} non-whitelisted top-level folders: {', '.join(skipped[:8])}{'…' if len(skipped) > 8 else ''}")
+
+    total_ok = 0
+    total_skip = 0
+    total_fail = 0
+
+    for event_folder in event_folders:
+        for company_dir, state_key, event_name in iter_event_companies(event_folder):
+            if args.company and company_dir.name != args.company:
+                continue
+            company = company_dir.name.strip()
+            print(f"\n[{event_name}] {company}")
+
+            if state_key in state:
+                print("  skip (already processed)")
+                total_skip += 1
+                continue
+
+            text_blob = collect_company_text(company_dir)
+            if not text_blob.strip():
+                print("  skip (no readable content)")
+                log_writer.writerow([state_key, event_name, "no_content", "", "", "", ""])
+                log_fh.flush()
+                total_skip += 1
+                continue
+
+            try:
+                record = call_claude(client, company, text_blob)
+            except Exception as e:
+                err = str(e)
+                print(f"  ERROR (claude): {err[:200]}")
+                safe = re.sub(r"[^A-Za-z0-9._-]+", "_", company)[:80] or "company"
+                (ERRORS_DIR / f"{safe}.txt").write_text(err)
+                log_writer.writerow([state_key, event_name, "claude_error", "", err[:500], "", ""])
+                log_fh.flush()
+                total_fail += 1
+                continue
+
+            record["event"] = event_name
+            record["data_entry"] = DATA_ENTRY
+            record["company"] = company
+
+            populated_keys = [k for k in FIELD_MAP if _coerce_value(record.get(k))]
+            blank_keys = [k for k in FIELD_MAP if k not in populated_keys]
+
+            if args.dry_run:
+                preview = {FIELD_MAP[k]: _coerce_value(record[k]) for k in populated_keys}
+                print("  [dry-run] would post:")
+                for line in json.dumps(preview, indent=2, ensure_ascii=False).splitlines():
+                    print(f"  {line}")
+                log_writer.writerow(
+                    [state_key, event_name, "dry_run", "", "", ";".join(populated_keys), ";".join(blank_keys)]
+                )
+                log_fh.flush()
+                continue
+
+            try:
+                rec_id = write_airtable(record, base_id, table_name, airtable_key)
+                print(f"  -> Airtable {rec_id}   populated={len(populated_keys)} blank={len(blank_keys)}")
+                state.add(state_key)
+                save_state(state, state_path)
+                log_writer.writerow(
+                    [state_key, event_name, "ok", rec_id, "", ";".join(populated_keys), ";".join(blank_keys)]
+                )
+                total_ok += 1
+            except Exception as e:
+                err = str(e)
+                print(f"  ERROR (airtable): {err[:200]}")
+                log_writer.writerow(
+                    [state_key, event_name, "airtable_error", "", err[:500], ";".join(populated_keys), ";".join(blank_keys)]
+                )
+                total_fail += 1
+            log_fh.flush()
+
+    log_fh.close()
+    print(f"\nDone. ok={total_ok} skipped={total_skip} failed={total_fail}")
+
+
+if __name__ == "__main__":
+    main()

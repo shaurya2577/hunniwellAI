@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.log
+.env
+venv/
+.venv/
+.DS_Store
+.idea/
+
+# Browser profiles and auth (platform-specific)
+platforms/resi/resi_browser_profile/
+platforms/innovator/innovator_browser_profile/
+platforms/resi/recordings/auth.json
+resi_browser_profile/
+recordings/

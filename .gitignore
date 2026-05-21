@@ -1,0 +1,75 @@
+# =============================================================================
+# Confidential / large data — NEVER commit
+# =============================================================================
+CompanyFiles/
+**/downloads/
+**/test_output/
+
+# Any data/document file (CSVs, decks, etc.) may contain confidential
+# company / financial / pre-signed-credential data. Block by default;
+# add specific allow-lines (e.g. !README/*.csv) below if a config file
+# legitimately needs to be tracked.
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.pdf
+*.docx
+*.pptx
+*.pages
+
+# =============================================================================
+# Secrets / auth (any subproject)
+# =============================================================================
+.env
+**/.env
+**/auth.json
+**/credentials*
+**/*.pem
+**/id_rsa*
+**/id_ed25519*
+
+# =============================================================================
+# Browser profiles & session caches (any subproject)
+# =============================================================================
+**/resi_browser_profile/
+**/innovator_browser_profile/
+**/jujama_browser_profile/
+**/*_browser_profile/
+**/recordings/
+
+# =============================================================================
+# Python virtualenvs, caches, compiled artifacts
+# =============================================================================
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+*.pyc
+*.pyo
+
+# =============================================================================
+# OS / IDE / session state
+# =============================================================================
+.DS_Store
+**/.DS_Store
+.idea/
+.cursor/
+.claude/
+.serena/
+
+# =============================================================================
+# Logs and operational output
+# =============================================================================
+*.log
+
+# airtable_ingest operational artifacts
+airtable_ingest/.processed*.json*
+airtable_ingest/run_log*.csv
+airtable_ingest/*.out
+
+# resi / innovator output exports
+resi/innovator_companies.csv
+resi/open_rounds_*.csv
+resi/index_*.csv
+resi/*_run.log
