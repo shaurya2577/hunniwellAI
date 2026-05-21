@@ -34,10 +34,6 @@ Net result: the analyst's job becomes "review the rows" instead of "transcribe e
 | `tools/pitchbook_converter/` — PitchBook HTML → Word | Works; simple Flask UI. |
 | `ai/airtable_ingest/` — Claude → Airtable | Working as of last run; 2,128 records ingested across 11 events. Defaults to Haiku 4.5 for cost. |
 
-## Try it in 30 seconds
-
-See **[DEMO.md](DEMO.md)** for a no-login walkthrough that extracts 144 medtech companies from a saved Radar Forum HTML into a CSV. Good for showing the architecture to a teammate.
-
 ## Layout
 
 ```
@@ -132,7 +128,6 @@ See [SECURITY.md](SECURITY.md). Short version: confidential company decks NEVER 
 | Doc | When to read |
 |---|---|
 | [README.md](README.md) | You're here — start. |
-| [DEMO.md](DEMO.md) | Showing this to someone in a meeting. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Understanding how scrapers + AI + Airtable fit together. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Setting up locally; adding a new scraper or event. |
 | [EVENT_LAYOUT.md](EVENT_LAYOUT.md) | Adding a new event to the AI ingest taxonomy. |

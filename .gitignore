@@ -73,3 +73,7 @@ resi/innovator_companies.csv
 resi/open_rounds_*.csv
 resi/index_*.csv
 resi/*_run.log
+
+# Personal demo notes (intentionally local-only)
+DEMO.md
+demo_output/
