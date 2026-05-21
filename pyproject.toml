@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hunniwell"
+version = "0.1.0"
+description = "Internal tooling for Hunniwell Lake Ventures: medtech-event scrapers + AI extraction → Airtable."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+
+dependencies = [
+  # Scrapers (Playwright-based)
+  "playwright>=1.40.0",
+  # AI extraction → Airtable
+  "anthropic>=0.40.0",
+  "requests>=2.31.0",
+  "python-dotenv>=1.0.0",
+  "pypdf>=4.0.0",
+  "python-docx>=1.1.0",
+  "python-pptx>=0.6.23",
+  # Pitchbook converter
+  "flask>=3.0.0",
+  "pillow>=11.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["scrapers*", "ai*", "tools*", "scripts*"]
+exclude = ["CompanyFiles*", "**/.venv*", "**/recordings*", "**/_browser_profile*"]
