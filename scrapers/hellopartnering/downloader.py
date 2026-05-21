@@ -753,7 +753,7 @@ def run_auto_loop(
 
     run_macro_fn = getattr(macro_module, "run_macro", None)
     if run_macro_fn is None:
-        logging.error("platforms/resi/recordings/macro.py has no run_macro function.")
+        logging.error("scrapers/hellopartnering/recordings/macro.py has no run_macro function.")
         return
 
     username, password = get_credentials()
@@ -802,7 +802,7 @@ def run_company_loop_only(
 
     run_macro_fn = getattr(macro_module, "run_macro", None)
     if run_macro_fn is None:
-        logging.error("platforms/resi/recordings/macro.py has no run_macro function.")
+        logging.error("scrapers/hellopartnering/recordings/macro.py has no run_macro function.")
         return
 
     if test_one:
@@ -831,7 +831,7 @@ def run_investor_auto_loop(page, context, test_one: bool = False) -> None:
 
     run_fn = getattr(inv_macro, "run_investor_macro", None)
     if run_fn is None:
-        logging.error("platforms/resi/recordings/investor_macro.py has no run_investor_macro.")
+        logging.error("scrapers/hellopartnering/recordings/investor_macro.py has no run_investor_macro.")
         return
 
     username, password = get_credentials()
@@ -856,7 +856,7 @@ def run_investor_loop_only(page, context, test_one: bool = False) -> None:
 
     run_fn = getattr(inv_macro, "run_investor_macro", None)
     if run_fn is None:
-        logging.error("platforms/resi/recordings/investor_macro.py has no run_investor_macro.")
+        logging.error("scrapers/hellopartnering/recordings/investor_macro.py has no run_investor_macro.")
         return
 
     if test_one:
@@ -884,14 +884,14 @@ def run_playback_loop(page, context, sector: str) -> None:
     _auth_path = os.path.join(config.RECORDINGS_DIR, "auth.json")
     macro_instructions = (
         "Run: playwright codegen --load-storage=" + _auth_path + " " + config.BASE_URL + "\n"
-        "Perform your per-company flow once, then paste the generated code into platforms/resi/recordings/macro.py "
+        "Perform your per-company flow once, then paste the generated code into scrapers/hellopartnering/recordings/macro.py "
         "(inside run_macro). Remove any page.goto(...); use the page and context passed in."
     )
     try:
         from scrapers.hellopartnering.recordings import macro as macro_module
         run_macro = getattr(macro_module, "run_macro", None)
         if run_macro is None:
-            logging.error("platforms/resi/recordings/macro.py has no run_macro function. %s", macro_instructions)
+            logging.error("scrapers/hellopartnering/recordings/macro.py has no run_macro function. %s", macro_instructions)
             return
     except Exception as e:
         logging.error("Could not import scrapers.hellopartnering.recordings.macro: %s. %s", e, macro_instructions)
@@ -960,7 +960,7 @@ def main() -> None:
     parser.add_argument(
         "--save-storage",
         action="store_true",
-        help="One-time: launch browser, log in, press Enter; save auth to platforms/resi/recordings/auth.json for playwright codegen --load-storage.",
+        help="One-time: launch browser, log in, press Enter; save auth to scrapers/hellopartnering/recordings/auth.json for playwright codegen --load-storage.",
     )
     parser.add_argument(
         "--sector",
