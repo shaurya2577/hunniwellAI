@@ -261,7 +261,13 @@ def call_claude(client: anthropic.Anthropic, company_name: str, text_blob: str) 
                 raise ValueError(f"Claude returned no text content (stop_reason={stop_reason})")
             raw_content = "".join(text_pieces)
             cleaned = _strip_fences(raw_content)
-            return json.loads(cleaned)
+            parsed = json.loads(cleaned)
+            if not isinstance(parsed, dict):
+                raise ValueError(
+                    f"Claude returned non-object JSON ({type(parsed).__name__}); "
+                    f"first 300 chars: {str(parsed)[:300]}"
+                )
+            return parsed
         except (anthropic.APIConnectionError, anthropic.APITimeoutError, anthropic.RateLimitError) as e:
             last_transport_err = e
             if attempt == 0:
