@@ -2,6 +2,42 @@
 
 Internal tools for Hunniwell Lake Ventures: scrapers that pull company info from medtech conference platforms (RESI, MTI Innovator, Jujama), an AI extractor that converts those files into structured Airtable records, and a couple of offline utilities.
 
+## What this exists for
+
+Hunniwell sees hundreds of medtech companies across conferences (JPM, LSI, MedTech Innovator events) every quarter. Each event drops a different export format on a different platform. Doing this by hand:
+
+- Costs hours per event of analyst time
+- Misses companies because the conference UIs paginate badly
+- Produces inconsistent Airtable rows (different fields filled per analyst)
+
+This repo automates the boring half:
+
+1. **Scrapers** pull a full per-company export from each conference platform — login flow, pagination, deck download — into a per-company folder structure.
+2. **AI ingest** reads each company folder, calls Claude with strict JSON schema, and writes one Airtable row per company. Inference is allowed for IATA / class / regulatory pathway (calibrated against the OneDrive layout used by the rest of the team).
+
+Net result: the analyst's job becomes "review the rows" instead of "transcribe each deck."
+
+## Who works on this
+
+- **Owner:** Shaurya Bhartia (intern, NeuroAge / Hunniwell, Berkeley BioE+EECS)
+- **Code review / direction:** Hunniwell partners
+- **End users:** Hunniwell analysts (who get the populated Airtable rows)
+
+## Status
+
+| Piece | State |
+|---|---|
+| `scrapers/hellopartnering/` — RESI / HelloPartnering | Works. Last used for JPM 2026. |
+| `scrapers/innovator_open_rounds/` — MTI Innovator Open Rounds | Works. Powers MTI 2026 Open Rounds. |
+| `scrapers/pro_innovator/` — MTI applications + Radar Forum | Works live; reliable in `--extract`/`--radar` offline mode. Used for MTI 2026 Virtual Pitches, APAC, Asia Spotlight, LA Radar Forum. |
+| `scrapers/jujama/` — Jujama platform | Works. Used for LSI 2026 events. |
+| `tools/pitchbook_converter/` — PitchBook HTML → Word | Works; simple Flask UI. |
+| `ai/airtable_ingest/` — Claude → Airtable | Working as of last run; 2,128 records ingested across 11 events. Defaults to Haiku 4.5 for cost. |
+
+## Try it in 30 seconds
+
+See **[DEMO.md](DEMO.md)** for a no-login walkthrough that extracts 144 medtech companies from a saved Radar Forum HTML into a CSV. Good for showing the architecture to a teammate.
+
 ## Layout
 
 ```
@@ -86,3 +122,20 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## How the pieces fit together
 
 See [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Security / data handling
+
+See [SECURITY.md](SECURITY.md). Short version: confidential company decks NEVER touch the repo. Keys NEVER touch the repo. CompanyFiles/ lives at `~/Documents/Hunniwell/` outside the repo, and `.gitignore` blocks every common data-file extension by default.
+
+## Index of docs
+
+| Doc | When to read |
+|---|---|
+| [README.md](README.md) | You're here — start. |
+| [DEMO.md](DEMO.md) | Showing this to someone in a meeting. |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Understanding how scrapers + AI + Airtable fit together. |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Setting up locally; adding a new scraper or event. |
+| [EVENT_LAYOUT.md](EVENT_LAYOUT.md) | Adding a new event to the AI ingest taxonomy. |
+| [SECURITY.md](SECURITY.md) | Before pushing anything; understanding what's confidential. |
+| `scrapers/<platform>/README.md` | Working on a specific scraper. |
+| `ai/airtable_ingest/README.md` | Running or changing the AI ingest. |
