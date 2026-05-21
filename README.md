@@ -17,11 +17,6 @@ This repo automates the boring half:
 
 Net result: the analyst's job becomes "review the rows" instead of "transcribe each deck."
 
-## Who works on this
-
-- **Owner:** Shaurya Bhartia (intern, NeuroAge / Hunniwell, Berkeley BioE+EECS)
-- **Code review / direction:** Hunniwell partners
-- **End users:** Hunniwell analysts (who get the populated Airtable rows)
 
 ## Status
 
