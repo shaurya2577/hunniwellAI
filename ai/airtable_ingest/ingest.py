@@ -17,7 +17,7 @@ Setup:
 Required env vars (loaded from .env next to ingest.py):
     ANTHROPIC_API_KEY
     AIRTABLE_API_KEY                Airtable personal access token
-    AIRTABLE_BASE_ID                e.g. appqYNxEg8JJkY4h5
+    AIRTABLE_BASE_ID                e.g. app...
     AIRTABLE_TABLE_NAME             table name or table ID (tbl...)
     HUNNIWELL_COMPANYFILES_ROOT     path to CompanyFiles tree (default: ~/Documents/Hunniwell)
 
@@ -58,7 +58,7 @@ LOG_FILE = SCRIPT_DIR / "run_log.csv"
 ERRORS_DIR = SCRIPT_DIR / "errors"
 
 CLAUDE_MODEL = "claude-haiku-4-5-20251001"  # was claude-sonnet-4-5; Haiku is ~5x faster, ~10x cheaper, fine for this domain
-DATA_ENTRY = "Shaurya"
+DATA_ENTRY = "AI"
 
 PER_FILE_CHAR_LIMIT = 30_000
 TOTAL_CHAR_LIMIT = 120_000
