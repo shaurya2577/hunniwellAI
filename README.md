@@ -23,7 +23,7 @@ Net result: the analyst's job becomes "review the rows" instead of "transcribe e
 | Piece | State |
 |---|---|
 | `scrapers/hellopartnering/` — RESI / HelloPartnering | Works. Last used for JPM 2026. |
-| `scrapers/innovator_open_rounds/` — MTI Innovator Open Rounds | Works. Powers MTI 2026 Open Rounds. |
+| `scrapers/innovator_open_rounds/` — MTI Innovator Open Rounds (TypeScript + Playwright) | Works. Powers MTI 2026 Open Rounds. |
 | `scrapers/pro_innovator/` — MTI applications + Radar Forum | Works live; reliable in `--extract`/`--radar` offline mode. Used for MTI 2026 Virtual Pitches, APAC, Asia Spotlight, LA Radar Forum. |
 | `scrapers/jujama/` — Jujama platform | Works. Used for LSI 2026 events. |
 | `tools/pitchbook_converter/` — PitchBook HTML → Word | Works; simple Flask UI. |
@@ -36,7 +36,7 @@ Net result: the analyst's job becomes "review the rows" instead of "transcribe e
 ├── scrapers/                 # One subdir per WEBSITE (not per event)
 │   ├── common/                  # Shared utilities (CSV index, downloader, sanitizers, postprocess)
 │   ├── hellopartnering/         # hellopartnering.com   (RESI; used for JPM 2026)
-│   ├── innovator_open_rounds/   # pro.innovator.org/open-rounds   (used for MTI Open Rounds)
+│   ├── innovator_open_rounds/   # pro.innovator.org/open-rounds   (TypeScript; used for MTI Open Rounds)
 │   ├── pro_innovator/           # pro.innovator.org applications + Radar (used for MTI Virtual / APAC / Spotlight / Prelim Reviews)
 │   └── jujama/                  # connect-v3.jujama.com   (used for LSI 2026 events)
 │
@@ -77,13 +77,16 @@ cp ai/airtable_ingest/.env.example ai/airtable_ingest/.env   # fill in keys
 
 ```bash
 python -m scrapers.hellopartnering.run --auto                # RESI
-python -m scrapers.innovator_open_rounds.run --auto          # MTI Open Rounds
 python -m scrapers.pro_innovator.run --live                  # MTI Pro Innovator (applications/Radar)
 python -m scrapers.jujama.run_companies                      # Jujama companies
 python -m scrapers.jujama.run_attendees                      # Jujama attendees
+
+# MTI Open Rounds is a TypeScript / Playwright project; run from its folder:
+( cd scrapers/innovator_open_rounds && npm run auth )        # one-time login
+( cd scrapers/innovator_open_rounds && npm run run:all )     # scrape + process
 ```
 
-Each entry point has `--help`. See each platform's own README under `scrapers/<platform>/`.
+Each Python entry point has `--help`. See each platform's own README under `scrapers/<platform>/`.
 
 **Ingest scraped folders into Airtable:**
 

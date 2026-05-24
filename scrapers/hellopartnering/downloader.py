@@ -997,11 +997,22 @@ def main() -> None:
     parser.add_argument(
         "--investor",
         action="store_true",
-        help="Investor mode: index delegates from investor firms (name, position, email, LinkedIn). Use Search for Investors.",
+        help="Investor mode: index delegates from investor firms. CURRENTLY DISABLED — recordings/investor_macro.py was never committed.",
     )
     args = parser.parse_args()
 
     log_path = args.log_file or os.path.join(config.OUTPUT_DIR, "resi_download.log")
+
+    if args.investor:
+        print(
+            "ERROR: --investor is disabled.\n"
+            "  scrapers/hellopartnering/recordings/investor_macro.py was never committed to this repo,\n"
+            "  so run_investor_auto_loop / run_investor_loop_only cannot execute.\n"
+            "  Recover the macro from another machine (look for `def run_investor_macro(page, context, firm_name_hint)`)\n"
+            "  or remove the --investor code paths. Aborting without launching the browser.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     setup_logging(log_path)
 
     if args.save_storage:

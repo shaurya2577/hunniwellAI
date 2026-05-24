@@ -1,0 +1,22 @@
+{
+  "name": "openrounds-scraper",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "auth": "tsx scripts/auth.ts",
+    "scrape": "tsx scripts/scrape-open-rounds.ts",
+    "process": "tsx scripts/process-csv.ts",
+    "run:all": "npm run scrape && npm run process"
+  },
+  "dependencies": {
+    "csv-parse": "^6.1.0",
+    "csv-stringify": "^6.5.2",
+    "sanitize-filename": "^1.6.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "playwright": "^1.55.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.2"
+  }
+}

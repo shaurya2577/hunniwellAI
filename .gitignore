@@ -49,6 +49,17 @@ CompanyFiles/
 *.pyo
 
 # =============================================================================
+# Node / TypeScript (for scrapers/innovator_open_rounds and any future TS tool)
+# =============================================================================
+**/node_modules/
+**/dist/
+**/.auth/
+**/storageState.json
+
+# Local example-page snapshots kept for selector debugging (per-scraper)
+scrapers/*/samples/
+
+# =============================================================================
 # OS / IDE / session state
 # =============================================================================
 .DS_Store
@@ -77,3 +88,4 @@ resi/*_run.log
 # Personal demo notes (intentionally local-only)
 DEMO.md
 demo_output/
+hunniwell.egg-info/
