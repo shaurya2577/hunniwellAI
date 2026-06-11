@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from typing import Optional
 from uuid import uuid4
 
+import psycopg
 from pgvector.psycopg import Vector
 
 from kg import embeddings  # module-attr import: callers use embeddings.embed(...)
-from kg.models import ClaimInput
+from kg.models import Claim, ClaimInput
 
 
 def _new_claim_id() -> str:
@@ -80,4 +82,73 @@ def write_claims(conn, company_id, source_id, claims, writer):
                 )
                 out.append(cur.fetchone()[0])
     conn.commit()
+    return out
+
+
+def query(
+    conn: psycopg.Connection,
+    company_id: str,
+    fields: Optional[list[str]] = None,
+) -> list[Claim]:
+    """Return active claims for a company, joining source reliability/uri/kind.
+
+    fields filters claims.field to the given list when provided.
+    status='active' only.
+    """
+    sql = """
+        select
+            c.id,
+            c.company_id,
+            c.field,
+            c.value,
+            c.source_id,
+            c.writer,
+            c.confidence,
+            c.status,
+            s.reliability,
+            s.uri,
+            s.kind
+        from claims c
+        left join sources s on s.id = c.source_id
+        where c.company_id = %s
+          and c.status = 'active'
+    """
+    params: list = [company_id]
+    if fields is not None:
+        sql += " and c.field = any(%s)"
+        params.append(list(fields))
+    sql += " order by c.created_at asc"
+
+    out: list[Claim] = []
+    with conn.cursor() as cur:
+        cur.execute(sql, params)
+        for row in cur.fetchall():
+            (
+                cid,
+                comp_id,
+                field,
+                value,
+                source_id,
+                writer,
+                confidence,
+                status,
+                reliability,
+                source_uri,
+                source_kind,
+            ) = row
+            out.append(
+                Claim(
+                    id=cid,
+                    company_id=str(comp_id),
+                    field=field,
+                    value=value,
+                    source_id=str(source_id) if source_id is not None else None,
+                    writer=writer,
+                    confidence=float(confidence) if confidence is not None else None,
+                    status=status,
+                    reliability=reliability,
+                    source_uri=source_uri,
+                    source_kind=source_kind,
+                )
+            )
     return out
