@@ -79,6 +79,7 @@ FIELD_MAP = {
     "regulatory_pathway": "Regulatory Pathway",
     "dev_stage": "Dev. Stage",
     "dev_stage_details": "Dev Stage Details",
+    "long_description": "Long Description (medical/clinical)",
     "equity_raised_m": "Equity Raised ($M)",
     "coming_round": "Coming Round",
     "size_of_round_m": "Size of Round ($M)",
@@ -97,18 +98,73 @@ from .events import EVENT_LAYOUTS  # noqa: E402
 
 SYSTEM_PROMPT = """You are extracting structured data about a single medtech company from raw text dumped out of the company's deck and any summary documents. Return only a JSON object matching the schema below — no prose, no markdown fences.
 
-Strict rule: If the provided text does not clearly support a field, omit that key entirely. Do not infer, do not guess, do not fill from general knowledge. Leaving a field blank is correct and expected.
+Strict rule: If the provided text does not clearly support a field, omit that key entirely. Do not infer, do not guess, do not fill from general knowledge. Cite sources where possible. Leaving a field blank is correct and expected. Do not repeat information across fields; each field should capture unique data points. 
+Focus on precision and verifiability based on the text, not completeness. Remove connecting words; uses phrases to make fields as concise as possible while still being clear.
+
+CRITICAL CITATION RULES:
+1. The source files contain explicit inline source brackets (e.g., [INT-1], [INT-2], [EXT-4], [EXT-11]).
+2. For text fields—specifically 'short_description', 'long_description', and 'company_notes'—you MUST append the exact, corresponding source bracket to the end of the sentence or metric you extract.
+3. Example format: "The company completed its first GMP production run in Q2 2022 [INT-1]. They are targeting a $4.0M Series A round [INT-1]."
+4. Never strip away or omit these source brackets; they are critical for auditing.
 
 Schema keys (all values must be strings):
-iata_code, country, short_description, medical_field, indication, class_of_device, regulatory_pathway, dev_stage, dev_stage_details, equity_raised_m, coming_round, size_of_round_m, est_close, key_executives, ceo_email, ceo_cell, company_notes, url, address.
+iata_code, country, short_description, medical_field, indication, class_of_device, regulatory_pathway, dev_stage, dev_stage_details, long_description, equity_raised_m, coming_round, size_of_round_m, est_close, key_executives, ceo_email, ceo_cell, company_notes, url, address.
 
-- short_description must be 2–4 sentences in your own words, never copied from the deck.
+- address: Refer to online sources if needed. Full address of company headquarters, ideally including street, city, state, and zip (if US-based).
+- iata code must be of closest international airport to company hq address
+- short_description must be 2-4 sentences and MUST STRICTLY follow the structure of:
+"[Technology name] provides a way to solve [Problem] in [Population] in order to [Outcome]." We want to focus on the companies/technology's target population and outcome underpinning the 
+technology and what makes it better than other technologies out there . There is no need to repeat the company's name in the short description. Here are some examples of what we want a short description looks like: [Technology name] is a way to 
+relieve urinary symptoms in men with AUASI score > 14 BPH-related urinary retention that has greater effectiveness than current minimally invasive treatments and has fewer complications than surgical treatment options, [Technology name] is a way
+ to perform point-of-care testing in patients  with skin lesions in order to enable accurate, inexpensive diagnosis of malignant melanoma by a dermatologist.
+
 - medical_field and indication: comma-separated string if multiple values apply (e.g. "Nephrology, Vascular Surgery, Dialysis").
 - equity_raised_m and size_of_round_m: decimal millions as a string (e.g. "0.10", "1.0").
 - est_close: format MM/YYYY.
-- company_notes captures other diligence-relevant signal (investors, IP, prior products, headcount, market sizing). Omit if nothing notable remains.
+- company_notes: Capture high-signal, diligence-relevant metrics not covered elsewhere in this profile. Prioritize: Key Institutional 
+Investors/Lead Backers, IP Portfolio Strength, Prior Marketed Products/Track Record. Strict Constraints: Focus on financial strategic, or technical moats. Do not include employee count. Where precise internal metrics are unavailable,
+ reference or anchor the data to verified online sources, industry databases, or public filings. Do not include team size. Leave this field blank or omit it completely if no unique, 
+ high-signal data exists beyond what has already been captured. Structure: a) awards/prizes/achievements for the company or the founders
+b) non-dilutive grants c) rounds of investments - $ amt, when, valuation & identity of investors where available
+d) Direct observations and comments/feedback from reliable sources
+- long_description (4-6 sentences; DO NOT REPEAT short_description): comprehensive clinical/medical context, published evidence, and competitive differentiation. Assume the reader already knows the problem/population/outcome from short_description — do not restate them.
+    STRUCTURE — Sentences 1-3 (clinical evidence): ALWAYS include sample size (n=X) whenever a clinical outcome is cited, with confidence intervals where available.
+      e.g. "Published data shows 95% negative predictive value (n=136) in prospective pancreatic-cyst classification [INT-2]." / "95% sensitivity (95% CI 92-97%, n=156) [EXT-3]."
+    Sentences 4-6 (standard-of-care comparison, QUANTIFIED): compare DIRECTLY to the named predicate device or current standard of care, with numbers.
+      e.g. "Unlike standard imaging which misses 30% of dysplastic lesions (n=89) [EXT-4], PanCystPro shows 95% NPV (n=136) [INT-2]." / "Company reports 2.7x greater tumor-cell kill vs. Optune in preclinical models (n=48 glioma lines) [INT-1]."
+    RULES:
+    - NEVER repeat content from short_description (problem, population, basic outcome).
+    - ALWAYS include sample size (n=) when citing clinical outcomes, and ALWAYS compare to the standard of care WITH numbers ("vs. current standard showing X%").
+    - IDENTIFY THE PREDICATE DEVICE explicitly by name ("Unlike Optune (current FDA-approved standard) which…"), never "current technology". If no predicate is named in the documents, write: "Based on literature, current standard of care for [indication] typically achieves X% (predicate: [device name] or standard surgical approach)".
+    - Use specific numbers everywhere (percentages, patient counts n=, pricing, market size); name specific competitors or "current standard of care" when available; emphasize what DIFFERENTIATES this technology.
+    - Do NOT infer clinical outcomes (only published/company-stated data); do NOT guess regulatory status (only explicit statements). If clinical evidence is limited, emphasize regulatory progress or market opportunity instead.
+    - Append the corresponding [INT-n]/[EXT-n] source bracket to every metric/claim, exactly as for short_description and company_notes; never strip them.
 """
 
+CHALLENGER_PROMPT = """You are a strict, adversarial Venture Capital Auditor and Copyeditor. You are given raw text documents from a medtech company's pitch materials and an initial AI data entry draft.
+
+Your two-part task is to:
+1. AUDIT: Eliminate hallucinations and unsupported claims.
+2. EDIT FOR READABILITY: Ensure the text is clean, professional, and punchy—preserving all exact metrics and citation brackets while stripping away dense academic jargon or clunky phrasing.
+
+<editorial_rules>
+- COMPACTNESS: Use active, concise phrases instead of long connecting clauses. Do not repeat the company's name unless strictly required by a specific schema layout. 
+- SHORT_DESCRIPTION TEMPLATE: Force the 'short_description' field to read as an investor-facing value proposition. Ensure it highlights what makes it better than the standard of care. Be concise.
+- MEDICAL_FIELD CLAUSE: Ensure 'medical_field' preserves high-level industry taxonomies (e.g., if it narrows down to "In Vitro Diagnostics", make sure broader context tags like "Oncology" or "Gastroenterology" remain intact so database filtering works).
+- READABILITY OVER CLUTTER: Do not let definitions spill into multi-paragraph run-ons. If a text field contains multiple distinct metrics, combine them elegantly into 2-3 highly polished sentences.
+- PRESERVE ALL CITATIONS: You MUST preserve all bracketed citations (e.g., [INT-1], [EXT-4]) exactly where their corresponding factual statement or metric lands. Never strip them out.
+</editorial_rules>
+
+<audit_rules>
+- If any info in the initial draft is NOT explicitly supported or cited by the raw text, wipe that value completely (set to "").
+- If a financial or regulatory number doesn't match the raw documents perfectly, correct it to match the truth.
+- Be as concise as possible while still conveying all the key data points. Remove any fluff or filler words that don't add concrete information.
+</audit_rules>
+
+STRICT FORMATTING CONSTRAINT: 
+You must output ONLY a valid JSON object matching the exact schema keys provided in the draft. Do NOT include any introductory text, closing notes, markdown blocks, or explanations. Start your response directly with '{' and end it directly with '}'.
+
+"""
 
 def derive_event(folder_name: str) -> str:
     """Canonical folder names ARE the Airtable Event values — no transformation."""
@@ -280,6 +336,33 @@ def call_claude(client: anthropic.Anthropic, company_name: str, text_blob: str) 
         raise last_transport_err
     raise RuntimeError("call_claude: unreachable")
 
+def call_challenger(client: anthropic.Anthropic, text_blob: str, draft_record: dict) -> dict:
+    user_msg = f"""RAW COMPANY DOCUMENTS:\n{text_blob}\n\n
+INITIAL AI DRAFT:\n{json.dumps(draft_record, indent=2)}"""
+    
+    try:
+        resp = client.messages.create(
+            model="claude-sonnet-4-6", 
+            max_tokens=2500, 
+            system=CHALLENGER_PROMPT,
+            messages=[{"role": "user", "content": user_msg}],
+            timeout=150.0, 
+        )
+        raw_content = "".join([b.text for b in resp.content if b.type == "text"]) 
+       
+        start_idx = raw_content.find('{')
+        end_idx = raw_content.rfind('}')
+        
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            cleaned = raw_content[start_idx:end_idx + 1]
+        else:
+            cleaned = _strip_fences(raw_content) 
+            
+        return json.loads(cleaned) 
+    except Exception as e:
+        print(f"  [warn] Adversarial challenge failed, falling back to original draft: {e}") 
+        return {} 
+
 
 def write_airtable(record: dict, base_id: str, table: str, api_key: str) -> str:
     fields = {}
@@ -291,7 +374,10 @@ def write_airtable(record: dict, base_id: str, table: str, api_key: str) -> str:
         if not coerced:
             continue
         fields[airtable_name] = coerced
-    payload = {"fields": fields}
+    payload = { "records": [{"fields": fields}],
+    "typecast": True, 
+    "performUpsert": {"fieldsToMergeOn": ["Company","Event"]}
+    }
 
     url = f"https://api.airtable.com/v0/{base_id}/{quote(table, safe='')}"
     headers = {
@@ -300,9 +386,10 @@ def write_airtable(record: dict, base_id: str, table: str, api_key: str) -> str:
     }
 
     for attempt in range(2):
-        r = requests.post(url, headers=headers, json=payload, timeout=30)
+        r = requests.patch(url, headers=headers, json=payload, timeout=30)
         if r.status_code in (200, 201):
-            return r.json()["id"]
+            # return r.json()["id"]
+            return r.json()["records"][0]["id"]
         if r.status_code in (429, 500, 502, 503, 504) and attempt == 0:
             time.sleep(5)
             continue
@@ -448,6 +535,17 @@ def main() -> None:
 
             try:
                 record = call_claude(client, company, text_blob)
+
+                print("  → Submitting full entry to Adversarial Council for audit...")
+                audited_record = call_challenger(client, text_blob, record)
+                
+                if audited_record and isinstance(audited_record, dict):
+                    audited_record["event"] = event_name
+                    audited_record["data_entry"] = DATA_ENTRY
+                    audited_record["company"] = company
+                    record = audited_record
+                    print("  → Audit complete. Non-supported fields cleared.")
+
             except Exception as e:
                 err = str(e)
                 print(f"  ERROR (claude): {err[:200]}")
