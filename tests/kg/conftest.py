@@ -45,3 +45,7 @@ def conn(_session_conn):
             )
     _session_conn.commit()
     yield _session_conn
+    # End any transaction the test body left open so the shared session
+    # connection is never left "idle in transaction" holding locks (which
+    # would deadlock a later module's DDL, e.g. test_schema's drop table).
+    _session_conn.rollback()
