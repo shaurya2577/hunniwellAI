@@ -89,6 +89,7 @@ FIELD_MAP = {
     "company_notes": "Company Notes",
     "url": "Url",
     "address": "Address",
+    "long_description": "Long Description (medical/clinical)",
 }
 
 # EVENT_LAYOUTS lives in events.py so non-coders can add new events without touching ingest.py.
@@ -103,10 +104,45 @@ Schema keys (all values must be strings):
 iata_code, country, short_description, medical_field, indication, class_of_device, regulatory_pathway, dev_stage, dev_stage_details, equity_raised_m, coming_round, size_of_round_m, est_close, key_executives, ceo_email, ceo_cell, company_notes, url, address.
 
 - short_description must be 2–4 sentences in your own words, never copied from the deck.
+ Structure:
+ The Short Description of the start up must be not more than 2 sentences and MUST STRICTLY follow the structure of: "[Technology name] provides a way to solve [Problem] in [Population] to [Outcome]."
+ We want to focus on the companies/technology's target population and outcome underpinning the technology and what makes it better than other technologies out there. There is no need to repeat the company's name in the short description.  
+ Try to refrain from using long connecting phrases such as “is an”, "in order to” , “provides a way to”. We want it to be as condensed as possible.  
+ Here are some examples of what we want a short description looks like: MyoSponge, an implantable bio-scaffold to regenerate functional muscle to restore strength/mobility and reduce amputation/complication rates in patients with limb-threatening muscle trauma.
 - medical_field and indication: comma-separated string if multiple values apply (e.g. "Nephrology, Vascular Surgery, Dialysis").
 - equity_raised_m and size_of_round_m: decimal millions as a string (e.g. "0.10", "1.0").
 - est_close: format MM/YYYY.
 - company_notes captures other diligence-relevant signal (investors, IP, prior products, headcount, market sizing). Omit if nothing notable remains.
+ Structure:
+ - Capture high-signal, diligence-relevant metrics not covered elsewhere in this profile. 
+ Prioritize: Key Institutional Investors/Lead Backers, IP Portfolio Strength (e.g., patent counts, foundational vs. incremental), Prior Marketed Products/Track Record, Current Headcount.
+ Strict Constraints: Do not repeat the company's location, founding date, executive names, current regulatory clearances, or product names already specified in other fields. 
+ Focus on financial, strategic, or technical moats (e.g., exclusive licensing, strategic corporate partners, or technical platform architecture details). 
+ Where precise internal metrics are unavailable, reference or anchor the data to verified online sources, industry databases, or public filings. 
+ Leave this field blank or omit it completely if no unique, high-signal data exists beyond what has already been captured.
+- long_description (4-6 sentences, DO NOT REPEAT short_description): Provides comprehensive clinical context, published evidence, and competitive differentiation. 
+ CRITICAL: No overlap with short_description. Assume the reader already knows the problem/population/outcome. 
+ Structure: Sentences 1-3: Clinical evidence with ALWAYS include sample size (n=X): 
+ - Published data: "Published data shows [outcome metric] (n=[sample size]) in [patient population]." 
+ - Example: "Published data shows 95% negative predictive value (n=136 patients) in prospective study of pancreatic cyst classification." 
+ - Include confidence intervals if available: "95% sensitivity (95% CI: 92-97%, n=156)" 
+ Sentence 4-6: Standard of care comparison with QUANTIFIED performance differential: 
+ - Compare DIRECTLY to predicate device or current standard of care 
+ - Example: "Unlike standard imaging which misses 30% of dysplastic lesions (n=89), PanCystPro demonstrates 95% NPV (n=136)." 
+ - If company provides competitor comparison: "Company reports 2.7x greater tumor cell kill vs. Optune in preclinical models (n=48 glioma cell lines)."
+ - If assessing predicate device: "Standard treatment (surgical resection) results in 40% functional loss (literature: n=200+ studies), compared to [product]'s reported [outcome]." 
+ - ALWAYS FLAG SOURCE: "(per company pitch)" OR "(published literature)" OR "(FDA 510(k) clearance letter)" 
+ RULES FOR LONG_DESCRIPTION: 
+ - NEVER repeat content from short_description (no re-stating the problem, population, or basic outcome) - ALWAYS include sample size (n=) whenever clinical outcomes are cited 
+ - ALWAYS compare to standard of care WITH numbers: "vs. current standard showing X%" 
+ - ALWAYS distinguish source: "(published in [journal/year])" OR "(company reports)" OR "(per FDA clearance letter)" OR "(Claude assessment of standard predicate device)" 
+ - IDENTIFY PREDICATE DEVICE: If comparing to a competitor, explicitly name it: "Unlike Optune (current FDA-approved standard) which..." NOT "Unlike current technology which..." 
+ - If predicate device is not explicitly named in documents, say: "Based on literature, current standard of care for [indication] typically achieves X% (predicate: [device name] or standard surgical approach)" 
+ - Use specific numbers EVERYWHERE: percentages, patient counts (n=), pricing, market size - Reference specific competitors or "current standard of care" when available 
+ - Emphasize DIFFERENTIATION: what makes this unique/better 
+ - Do NOT infer clinical outcomes; only cite published/company-stated data 
+ - Do NOT guess regulatory status; only include explicit statements 
+ - If clinical evidence is limited, emphasize regulatory progress or market opportunity instead 
 """
 
 
