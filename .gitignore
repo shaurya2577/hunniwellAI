@@ -69,6 +69,10 @@ scrapers/*/samples/
 .claude/
 .serena/
 
+# Vendored agent skills (npx skills add …) + lockfile — re-fetchable, not tracked
+.agents/
+skills-lock.json
+
 # =============================================================================
 # Logs and operational output
 # =============================================================================
