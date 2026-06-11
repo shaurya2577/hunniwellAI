@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+from typing import Union
 
 import psycopg
 from dotenv import load_dotenv
 from pgvector.psycopg import register_vector
 
 load_dotenv()
+
+_DEFAULT_SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 
 
 def get_db_url() -> str:
@@ -29,3 +33,15 @@ def connect() -> psycopg.Connection:
     conn = psycopg.connect(get_db_url())
     register_vector(conn)
     return conn
+
+
+def apply_schema(
+    conn: psycopg.Connection,
+    sql_path: Union[str, Path, None] = None,
+) -> None:
+    """Apply kg/schema.sql to ``conn``. Idempotent (create ... if not exists)."""
+    path = Path(sql_path) if sql_path is not None else _DEFAULT_SCHEMA_PATH
+    sql = path.read_text(encoding="utf-8")
+    with conn.cursor() as cur:
+        cur.execute(sql)
+    conn.commit()
