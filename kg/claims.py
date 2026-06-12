@@ -14,8 +14,8 @@ def _new_claim_id() -> str:
     return "clm_" + uuid4().hex
 
 
-def write_claims(conn, company_id, source_id, claims, writer):
-    """Insert claims idempotently. Embeds each value via kg.embeddings.embed.
+def _insert_claims(conn, company_id, source_id, claims, writer):
+    """Insert claims idempotently WITHOUT committing. Returns claim ids.
 
     The embed call site is ALWAYS the module attr `embeddings.embed(...)` so a
     single test patch of `kg.embeddings.embed` intercepts every caller. There is
@@ -25,6 +25,9 @@ def write_claims(conn, company_id, source_id, claims, writer):
     (company_id, coalesce(field,''), md5(value), source_id) where status='active'.
     A re-insert of the same (field, value, source) returns the existing id and
     creates no duplicate row.
+
+    Shared by write_claims (which commits) and enrich (which commits once,
+    atomically, after the supersede UPDATE).
     """
     if not claims:
         return []
@@ -81,8 +84,51 @@ def write_claims(conn, company_id, source_id, claims, writer):
                     (company_id, claim.field, claim.value, source_id),
                 )
                 out.append(cur.fetchone()[0])
+    return out
+
+
+def write_claims(conn, company_id, source_id, claims, writer):
+    """Insert claims idempotently and commit. See _insert_claims for details."""
+    out = _insert_claims(conn, company_id, source_id, claims, writer)
     conn.commit()
     return out
+
+
+def enrich(
+    conn,
+    company_id: str,
+    source_id: str,
+    claims: list[ClaimInput],
+    writer: str,
+    *,
+    supersede_claim_ids: Optional[list[str]] = None,
+) -> list[str]:
+    """Council write path: same insert as write_claims but writer is namespaced
+    'council:<agent>'. ATOMIC: the new claim insert(s) AND the supersede UPDATE
+    run in one transaction with a single commit at the end, so a supersede
+    failure rolls back the newly inserted claim(s). Sets superseded_by on the
+    retired rows to the first new claim id."""
+    council_writer = "council:" + writer
+    try:
+        new_ids = _insert_claims(conn, company_id, source_id, claims, council_writer)
+
+        if supersede_claim_ids:
+            if not new_ids:
+                raise ValueError("cannot supersede claims without a new claim to point to")
+            winner_id = new_ids[0]
+            with conn.cursor() as cur:
+                cur.execute(
+                    "update claims set status = 'superseded', superseded_by = %s "
+                    "where id = any(%s) and company_id = %s",
+                    (winner_id, list(supersede_claim_ids), company_id),
+                )
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+    return new_ids
 
 
 def query(
