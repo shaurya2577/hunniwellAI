@@ -37,3 +37,9 @@ dev = [
 [tool.setuptools.packages.find]
 include = ["scrapers*", "ai*", "tools*", "scripts*", "kg*"]
 exclude = ["CompanyFiles*", "**/.venv*", "**/recordings*", "**/_browser_profile*"]
+
+[tool.pytest.ini_options]
+# Import test modules under their dotted `tests.kg.*` name so the `tests/kg`
+# package does not register as bare `kg` in sys.modules and shadow the real
+# top-level `kg/` package (needed for `import kg` in tests/kg/test_public_api.py).
+consider_namespace_packages = true
