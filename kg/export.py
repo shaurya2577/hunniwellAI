@@ -7,7 +7,13 @@ synthetic 'company' and 'event' keys taken from the company / its appearance.
 
 import psycopg
 
-from ai.airtable_ingest.ingest import FIELD_MAP
+from ai.airtable_ingest.ingest import FIELD_MAP, _KG_SKIP_KEYS
+
+# Claim fields eligible for export: every FIELD_MAP key EXCEPT the identity keys
+# ('company','event','data_entry'), which are synthetic headers set from
+# companies/appearances. A stray claim with field='company'/'event' must never
+# overwrite those authoritative values. Mirrors the write-side _KG_SKIP_KEYS.
+_EXPORT_FIELDS = [k for k in FIELD_MAP if k not in _KG_SKIP_KEYS]
 
 
 def to_airtable_record(conn: psycopg.Connection, company_id: str) -> dict:
@@ -33,7 +39,7 @@ def to_airtable_record(conn: psycopg.Connection, company_id: str) -> dict:
             """
             select distinct on (c.field) c.field, c.value
             from claims c
-            join sources s on s.id = c.source_id
+            left join sources s on s.id = c.source_id
             where c.company_id = %s
               and c.status = 'active'
               and c.field is not null
@@ -42,7 +48,7 @@ def to_airtable_record(conn: psycopg.Connection, company_id: str) -> dict:
                      coalesce(s.reliability, -1) desc,
                      c.created_at desc
             """,
-            (company_id, list(FIELD_MAP.keys())),
+            (company_id, _EXPORT_FIELDS),
         )
         for field, value in cur.fetchall():
             rec[field] = value

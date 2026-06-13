@@ -21,10 +21,16 @@ UUID_RE = re.compile(
         ("Baz Ltd", "baz"),
         ("Acme Health Inc", "acme health"),
         ("plain name", "plain name"),
+        ("Foo Corp, LLC", "foo"),
     ],
 )
 def test_normalize_name(raw, expected):
     assert _normalize_name(raw) == expected
+
+
+def test_normalize_name_strips_stacked_suffixes():
+    # Stacked legal suffixes must all be stripped so dedup works.
+    assert _normalize_name("Foo Corp, LLC") == _normalize_name("Foo")
 
 
 def _appearances(conn, company_id):

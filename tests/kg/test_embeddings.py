@@ -21,8 +21,11 @@ class _FakeVoyageClient:
 
 def _install_fake(monkeypatch):
     """Patch the voyageai.Client constructor and the cached module client so no
-    network call is ever made."""
+    network call is ever made. Also stub get_voyage_key so the tests need NO
+    VOYAGE_API_KEY in the environment (the key is eval'd eagerly when the client
+    is constructed, even though the fake constructor ignores it)."""
     fake = _FakeVoyageClient()
+    monkeypatch.setattr(embeddings, "get_voyage_key", lambda: "test-key")
     monkeypatch.setattr(embeddings.voyageai, "Client", lambda *a, **k: fake)
     # Reset any module-level cached client so the patched constructor is used.
     monkeypatch.setattr(embeddings, "_client", None, raising=False)
@@ -45,6 +48,18 @@ def test_embed_batches_all_texts_in_one_call(monkeypatch):
     assert call["texts"] == ["a", "b", "c"]
     assert call["model"] == "voyage-3.5"
     assert call["input_type"] == "document"
+
+
+def test_embed_defaults_to_document_input_type(monkeypatch):
+    fake = _install_fake(monkeypatch)
+    embeddings.embed(["a"])
+    assert fake.calls[0]["input_type"] == "document"
+
+
+def test_embed_passes_through_query_input_type(monkeypatch):
+    fake = _install_fake(monkeypatch)
+    embeddings.embed(["a"], input_type="query")
+    assert fake.calls[0]["input_type"] == "query"
 
 
 def test_embed_empty_list_returns_empty_without_calling_client(monkeypatch):

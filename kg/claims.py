@@ -88,9 +88,16 @@ def _insert_claims(conn, company_id, source_id, claims, writer):
 
 
 def write_claims(conn, company_id, source_id, claims, writer):
-    """Insert claims idempotently and commit. See _insert_claims for details."""
-    out = _insert_claims(conn, company_id, source_id, claims, writer)
-    conn.commit()
+    """Insert claims idempotently and commit. See _insert_claims for details.
+
+    On any failure the transaction is rolled back (so the connection is not left
+    in an aborted-transaction state) and the error re-raised (mirrors enrich)."""
+    try:
+        out = _insert_claims(conn, company_id, source_id, claims, writer)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     return out
 
 
@@ -107,8 +114,12 @@ def enrich(
     'council:<agent>'. ATOMIC: the new claim insert(s) AND the supersede UPDATE
     run in one transaction with a single commit at the end, so a supersede
     failure rolls back the newly inserted claim(s). Sets superseded_by on the
-    retired rows to the first new claim id."""
-    council_writer = "council:" + writer
+    retired rows to the first new claim id.
+
+    Writer convention: the stored writer is namespaced 'council:<agent>'. Pass
+    either a bare agent name ('lucia') or an already-namespaced one
+    ('council:lucia'); the prefix is added only if absent (no double-prefix)."""
+    council_writer = writer if writer.startswith("council:") else "council:" + writer
     try:
         new_ids = _insert_claims(conn, company_id, source_id, claims, council_writer)
 
@@ -117,10 +128,14 @@ def enrich(
                 raise ValueError("cannot supersede claims without a new claim to point to")
             winner_id = new_ids[0]
             with conn.cursor() as cur:
+                # Exclude the just-returned new_ids: the idempotent insert returns
+                # an EXISTING id on a claims_idem conflict, so a caller passing that
+                # id in supersede_claim_ids would otherwise retire the very claim it
+                # just (re)wrote -> silent data loss.
                 cur.execute(
                     "update claims set status = 'superseded', superseded_by = %s "
-                    "where id = any(%s) and company_id = %s",
-                    (winner_id, list(supersede_claim_ids), company_id),
+                    "where id = any(%s) and id <> all(%s) and company_id = %s",
+                    (winner_id, list(supersede_claim_ids), list(new_ids), company_id),
                 )
 
         conn.commit()

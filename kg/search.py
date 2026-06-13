@@ -15,7 +15,7 @@ def semantic_search(
     # REAL BUG FIX: embed via the module attr so the test's
     # monkeypatch.setattr("kg.embeddings.embed", fake) intercepts this call and
     # no Voyage network request is made. Do NOT use `from kg.embeddings import embed`.
-    qvec = embeddings.embed([text])[0]
+    qvec = embeddings.embed([text], input_type="query")[0]
 
     sql = """
         select

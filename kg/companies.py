@@ -11,7 +11,13 @@ _WS_RE = re.compile(r"\s+")
 def _normalize_name(name: str) -> str:
     s = name.strip().lower()
     s = _WS_RE.sub(" ", s)
-    s = _LEGAL_SUFFIX_RE.sub("", s)
+    # Strip stacked legal suffixes ("Foo Corp, LLC") by applying the regex
+    # repeatedly until the string stops changing.
+    while True:
+        stripped = _LEGAL_SUFFIX_RE.sub("", s)
+        if stripped == s:
+            break
+        s = stripped
     s = _WS_RE.sub(" ", s).strip()
     return s
 

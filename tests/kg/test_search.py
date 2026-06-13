@@ -21,7 +21,7 @@ TEXT_TO_AXIS = {
     "glucose monitoring wearable": 2,
 }
 
-def _fake_embed(texts):
+def _fake_embed(texts, input_type="document"):
     out = []
     for t in texts:
         if t in TEXT_TO_AXIS:
@@ -108,6 +108,38 @@ def test_company_id_filters_scope(conn):
     assert len(results) == 1
     assert results[0].company_id == b_id
     assert results[0].value == "cardiac ablation catheter"
+
+def test_semantic_search_embeds_query_with_query_input_type(conn, monkeypatch):
+    # The query embedding must use input_type="query"; document writes use
+    # input_type="document".
+    captured = {}
+
+    def capturing_embed(texts, input_type="document"):
+        captured["input_type"] = input_type
+        return _fake_embed(texts)
+
+    monkeypatch.setattr("kg.embeddings.embed", capturing_embed)
+    company_id, source_id = _seed_company(conn, "memos/q.md", "Query Co")
+    semantic_search(conn, "cardiac ablation catheter", k=1)
+    assert captured["input_type"] == "query"
+
+
+def test_write_claims_embeds_with_document_input_type(conn, monkeypatch):
+    captured = []
+
+    def capturing_embed(texts, input_type="document"):
+        captured.append(input_type)
+        return _fake_embed(texts)
+
+    monkeypatch.setattr("kg.embeddings.embed", capturing_embed)
+    company_id, source_id = _seed_company(conn, "memos/w.md", "Write Co")
+    write_claims(
+        conn, company_id, source_id,
+        [ClaimInput(field="device", value="cardiac ablation catheter")],
+        writer="tester",
+    )
+    assert captured == ["document"]
+
 
 def test_returns_claim_with_source_join_fields(conn):
     company_id, source_id = _seed_company(conn, "memos/e.md", "Gamma Corp")

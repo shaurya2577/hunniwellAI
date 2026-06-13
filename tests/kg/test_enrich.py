@@ -46,6 +46,20 @@ def test_enrich_adds_new_active_claim_with_council_writer(conn):
     # writer namespaced as council:<agent>
     assert c.writer == "council:lucia"
 
+def test_enrich_does_not_double_prefix_council_writer(conn):
+    # Caller passing an already-namespaced writer must not get "council:council:".
+    company_id, source_id = _setup_company_source(conn)
+    ids = enrich(
+        conn,
+        company_id,
+        source_id,
+        [ClaimInput(field="hq", value="Austin, TX")],
+        writer="council:lucia",
+    )
+    rows = query(conn, company_id, fields=["hq"])
+    assert rows[0].writer == "council:lucia"
+
+
 def test_supersede_marks_old_superseded_and_query_returns_only_new(conn):
     company_id, source_id = _setup_company_source(conn)
 
@@ -89,6 +103,42 @@ def test_supersede_marks_old_superseded_and_query_returns_only_new(conn):
         status, superseded_by = cur.fetchone()
     assert status == "superseded"
     assert superseded_by == new_id
+
+def test_enrich_does_not_self_supersede_returned_id(conn):
+    # enrich's idempotent insert returns the EXISTING id on a claims_idem
+    # conflict. If that same id is passed in supersede_claim_ids, the supersede
+    # UPDATE must NOT retire the very claim it just returned (data loss).
+    company_id, source_id = _setup_company_source(conn)
+
+    first_ids = enrich(
+        conn,
+        company_id,
+        source_id,
+        [ClaimInput(field="hq", value="Boston, MA")],
+        writer="lucia",
+    )
+    assert len(first_ids) == 1
+    the_id = first_ids[0]
+
+    # Re-enrich the SAME (field, value, source); idempotent insert returns the
+    # existing id. Pass that id as a supersede target.
+    second_ids = enrich(
+        conn,
+        company_id,
+        source_id,
+        [ClaimInput(field="hq", value="Boston, MA")],
+        writer="lucia",
+        supersede_claim_ids=[the_id],
+    )
+    assert second_ids == [the_id]
+
+    # The claim must STILL be active and returned by query().
+    rows = query(conn, company_id, fields=["hq"])
+    assert len(rows) == 1
+    assert rows[0].id == the_id
+    assert rows[0].value == "Boston, MA"
+    assert rows[0].status == "active"
+
 
 def test_supersede_failure_rolls_back_new_claim(conn):
     # Atomicity: if the supersede UPDATE fails, the new claim insert must roll

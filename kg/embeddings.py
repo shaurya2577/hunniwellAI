@@ -25,12 +25,15 @@ def _get_client() -> voyageai.Client:
     return _client
 
 
-def embed(texts: list[str]) -> list[list[float]]:
+def embed(texts: list[str], input_type: str = "document") -> list[list[float]]:
     """Embed texts in a single batched Voyage call. Each vector has length 1024.
+
+    input_type is passed through to Voyage: use "document" for claims/documents
+    being stored (the default) and "query" for search queries.
 
     Returns [] immediately for empty input (no client construction, no network).
     """
     if not texts:
         return []
-    result = _get_client().embed(texts, model=MODEL, input_type="document")
+    result = _get_client().embed(texts, model=MODEL, input_type=input_type)
     return [[float(x) for x in vec] for vec in result.embeddings]

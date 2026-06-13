@@ -57,6 +57,41 @@ def test_equal_reliability_newest_wins(conn):
     assert rec["indication"] == "NewValue"
 
 
+def test_identity_field_claim_does_not_overwrite_synthetic_header(conn):
+    # A claim with field='company' must NOT overwrite the authoritative
+    # synthetic 'company' header (taken from companies.name_raw).
+    company_id = resolve_company(conn, "JPM/Delta/deck.pdf", "Delta Inc", "JPM 2026")
+    src = upsert_source(conn, company_id, kind="company_submitted", uri=None, writer="alice")
+    write_claims(
+        conn, company_id, src,
+        [ClaimInput(field="company", value="WRONG")],
+        writer="alice",
+    )
+
+    rec = to_airtable_record(conn, company_id)
+    assert rec["company"] == "Delta Inc"  # synthetic header, not the claim value
+
+
+def test_claim_with_null_source_id_is_included(conn):
+    # Active claims with NULL source_id must still be exported (LEFT JOIN).
+    company_id = resolve_company(conn, "JPM/Epsilon/deck.pdf", "Epsilon Inc", "JPM 2026")
+    import kg.embeddings as _emb
+    vec = _emb.embed(["Cardiology"])[0]
+    from pgvector.psycopg import Vector
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into claims (id, company_id, field, value, source_id, writer, "
+            "confidence, embedding, status) values "
+            "(%s, %s, %s, %s, NULL, %s, %s, %s, 'active')",
+            ("clm_nullsrc_export", company_id, "medical_field", "Cardiology",
+             "analyst", None, Vector(vec)),
+        )
+    conn.commit()
+
+    rec = to_airtable_record(conn, company_id)
+    assert rec["medical_field"] == "Cardiology"
+
+
 def test_output_keys_subset_of_field_map_and_has_company_event(conn):
     company_id = resolve_company(conn, "JPM/Gamma/deck.pdf", "Gamma Inc", "JPM 2026")
     src = upsert_source(conn, company_id, kind="company_submitted", uri=None, writer="alice")

@@ -50,4 +50,5 @@ create index if not exists claims_embedding on claims using hnsw (embedding vect
 
 create unique index if not exists claims_idem
   on claims(company_id, coalesce(field, ''), md5(value), source_id)
+  nulls not distinct
   where status = 'active';

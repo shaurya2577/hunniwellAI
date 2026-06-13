@@ -51,12 +51,21 @@ def test_claim_dataclass_fields():
     assert c.reliability == 3
 
 
-def test_get_db_url_prefers_test_database_url(monkeypatch):
+def test_get_db_url_falls_back_to_supabase_when_test_empty(monkeypatch):
     from kg import config
 
     monkeypatch.setenv("TEST_DATABASE_URL", "")
     monkeypatch.setenv("SUPABASE_DB_URL", "postgresql://x/prod")
     assert config.get_db_url() == "postgresql://x/prod"
+
+
+def test_get_db_url_prefers_test_database_url(monkeypatch):
+    from kg import config
+
+    # Both set: TEST_DATABASE_URL must win (the genuine preference).
+    monkeypatch.setenv("TEST_DATABASE_URL", "postgresql://x/test")
+    monkeypatch.setenv("SUPABASE_DB_URL", "postgresql://x/prod")
+    assert config.get_db_url() == "postgresql://x/test"
 
 
 def test_connect_returns_live_connection():

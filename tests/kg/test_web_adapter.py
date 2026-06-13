@@ -49,6 +49,24 @@ def test_parse_memo_references_and_claims():
     assert ("EXT-1", "INT-1") in by_tags  # sorted tags of the dual-cited statement
 
 
+def test_parse_memo_does_not_truncate_on_decimals_or_abbreviations():
+    memo = """\
+# Memo
+
+Equity raised is $4.2M to date [INT-1].
+Dr. Smith leads the company [EXT-1].
+
+REFERENCES
+[INT-1] deck.pdf
+[EXT-1] Profile — https://example.com/smith
+"""
+    parsed = parse_memo(memo)
+    values = [c["value"] for c in parsed["claims"]]
+    # Period inside "$4.2M" and after "Dr" must NOT split the sentence.
+    assert any("$4.2M to date" in v for v in values), values
+    assert any("Dr. Smith leads the company" in v for v in values), values
+
+
 from kg.web_adapter import ingest_memo
 from kg.companies import resolve_company
 

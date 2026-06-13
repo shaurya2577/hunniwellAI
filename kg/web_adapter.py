@@ -6,8 +6,21 @@ from .claims import write_claims
 
 _REF_RE = re.compile(r"^\[(INT-\d+|EXT-\d+)\]\s+(.*?)\s*$")
 _TAG_RE = re.compile(r"\[(INT-\d+|EXT-\d+)\]")
-# split body into statements: any run with a trailing citation up to sentence end / newline
-_STMT_RE = re.compile(r"[^.\n]*\[(?:INT|EXT)-\d+\][^.\n]*\.?")
+
+# Common abbreviations whose trailing period must NOT end a sentence.
+_ABBREVS = (
+    "Dr", "Mr", "Mrs", "Ms", "Prof", "St", "vs", "etc", "Inc", "Corp",
+    "Ltd", "Co", "U.S", "U.K", "Ph.D", "e.g", "i.e", "No",
+)
+# Sentence boundary: end punctuation + whitespace + an uppercase/'[' start, but
+# NOT after a known abbreviation and NOT inside a decimal like "4.2" (the period
+# is only a boundary when followed by whitespace, so "4.2M" never splits). The
+# split position is just AFTER the period, so each abbreviation guard includes
+# its trailing period, e.g. (?<!\bDr\.).
+_ABBREV_GUARD = "".join(
+    r"(?<!\b" + a.replace(".", r"\.") + r"\.)" for a in _ABBREVS
+)
+_SENT_SPLIT_RE = re.compile(_ABBREV_GUARD + r"(?<=[.!?])\s+(?=[A-Z\[])")
 
 
 def _split_ref_line(rest: str):
@@ -40,14 +53,21 @@ def parse_memo(text: str) -> dict:
     body_lines = lines if ref_start is None else lines[: ref_start - 1]
     body = "\n".join(body_lines)
 
+    # Segment the body into sentences (per line, so a sentence never crosses a
+    # newline), then keep only sentences carrying an [INT-n]/[EXT-n] tag. Using a
+    # period-aware splitter (not a [^.\n]* class) so decimals ("$4.2M") and
+    # abbreviations ("Dr. Smith") are not truncated.
     claims: list[dict] = []
-    for stmt in _STMT_RE.findall(body):
-        tags = _TAG_RE.findall(stmt)
-        if not tags:
+    for line in body.splitlines():
+        if not line.strip():
             continue
-        value = _TAG_RE.sub("", stmt).strip()
-        value = re.sub(r"\s+", " ", value).strip()
-        claims.append({"field": None, "value": value, "tags": sorted(set(tags))})
+        for stmt in _SENT_SPLIT_RE.split(line):
+            tags = _TAG_RE.findall(stmt)
+            if not tags:
+                continue
+            value = _TAG_RE.sub("", stmt).strip()
+            value = re.sub(r"\s+", " ", value).strip()
+            claims.append({"field": None, "value": value, "tags": sorted(set(tags))})
 
     return {"references": references, "claims": claims}
 
