@@ -13,15 +13,18 @@ UUID_RE = re.compile(
 @pytest.mark.parametrize(
     "raw,expected",
     [
-        ("Auvi Labs, Inc.", "auvi labs"),
-        ("  Auvi   Labs  ", "auvi labs"),
-        ("AUVI LABS LLC", "auvi labs"),
+        ("Auvi Labs, Inc.", "auvilabs"),
+        ("  Auvi   Labs  ", "auvilabs"),
+        ("AUVI LABS LLC", "auvilabs"),
         ("Foo Corp.", "foo"),
         ("Bar Co", "bar"),
         ("Baz Ltd", "baz"),
-        ("Acme Health Inc", "acme health"),
-        ("plain name", "plain name"),
+        ("Acme Health Inc", "acmehealth"),
+        ("plain name", "plainname"),
         ("Foo Corp, LLC", "foo"),
+        # spacing/punctuation variants of the same company collapse to one key
+        ("3D BioFibR Inc", "3dbiofibr"),
+        ("3DBioFibR", "3dbiofibr"),
     ],
 )
 def test_normalize_name(raw, expected):
@@ -61,7 +64,7 @@ def test_new_company_creates_one_row_and_appearance(conn):
             "select name_norm, name_raw from companies where id = %s", (cid,)
         )
         name_norm, name_raw = cur.fetchone()
-    assert name_norm == "auvi labs"
+    assert name_norm == "auvilabs"
     assert name_raw == "Auvi Labs, Inc."
 
     appearances = _appearances(conn, cid)
@@ -93,6 +96,16 @@ def test_two_relpaths_same_name_dedup_company(conn):
     cid2 = resolve_company(
         conn, relpath="evt/Foo/b.pdf", name="Foo", event="evt"
     )
+    assert cid1 == cid2
+    assert _company_count(conn) == 1
+    assert len(_appearances(conn, cid1)) == 2
+
+
+def test_spacing_variants_dedup_to_one_company(conn):
+    # Real-data case from the LSI run: "3D BioFibR Inc" and "3DBioFibR" are the
+    # same company in two folders; they must merge to one entity, two appearances.
+    cid1 = resolve_company(conn, relpath="LSI/3D BioFibR Inc/a.pdf", name="3D BioFibR Inc", event="LSI")
+    cid2 = resolve_company(conn, relpath="LSI/3DBioFibR/b.pdf", name="3DBioFibR", event="LSI")
     assert cid1 == cid2
     assert _company_count(conn) == 1
     assert len(_appearances(conn, cid1)) == 2

@@ -43,6 +43,8 @@ Net result: the analyst's job becomes "review the rows" instead of "transcribe e
 ├── ai/                       # LLM / extraction code
 │   └── airtable_ingest/         # Reads CompanyFiles/<event>/<company>/, calls Claude, writes Airtable
 │
+├── kg/                       # Per-company knowledge base (Supabase + pgvector); SETUP: kg/README.md
+│
 ├── tools/                    # Offline / one-off utilities
 │   └── pitchbook_converter/     # PitchBook HTML → Word doc (Flask UI)
 │
