@@ -23,13 +23,23 @@ dependencies = [
   # Pitchbook converter
   "flask>=3.0.0",
   "pillow>=11.0.0",
+  # Knowledge graph (kg/) — Supabase Postgres + pgvector + Voyage embeddings
+  "psycopg[binary]>=3.1",
+  "pgvector>=0.3",
+  "voyageai>=0.3",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=7.0",
+  "pytest>=8",
 ]
 
 [tool.setuptools.packages.find]
-include = ["scrapers*", "ai*", "tools*", "scripts*"]
+include = ["scrapers*", "ai*", "tools*", "scripts*", "kg*"]
 exclude = ["CompanyFiles*", "**/.venv*", "**/recordings*", "**/_browser_profile*"]
+
+[tool.pytest.ini_options]
+# Import test modules under their dotted `tests.kg.*` name so the `tests/kg`
+# package does not register as bare `kg` in sys.modules and shadow the real
+# top-level `kg/` package (needed for `import kg` in tests/kg/test_public_api.py).
+consider_namespace_packages = true

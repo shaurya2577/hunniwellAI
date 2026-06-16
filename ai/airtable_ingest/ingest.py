@@ -47,6 +47,13 @@ from dotenv import load_dotenv
 from pptx import Presentation
 from pypdf import PdfReader
 
+# KG dual-write (optional). kg/ is a sibling package at repo root.
+from kg.config import connect  # noqa: E402
+from kg.companies import resolve_company  # noqa: E402
+from kg.sources import upsert_source  # noqa: E402
+from kg.claims import write_claims  # noqa: E402
+from kg.models import ClaimInput  # noqa: E402
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 load_dotenv(SCRIPT_DIR / ".env")
 
@@ -410,6 +417,39 @@ def save_state(state: set[str], path: Path) -> None:
     path.write_text(json.dumps(sorted(state), indent=2))
 
 
+# json_keys that are NOT company-fact claims (identity/provenance, not diligence values).
+_KG_SKIP_KEYS = {"company", "event", "data_entry"}
+
+def kg_dual_write(conn, record: dict, relpath: str) -> None:
+    """Mirror a finalized (post-challenger) ingested record into the KG: one
+    company (deduped) + one company_submitted source + one claim per FIELD_MAP
+    json_key present, excluding identity keys and blanks. relpath == state_key."""
+    company_id = resolve_company(conn, relpath, record["company"], record["event"])
+    source_id = upsert_source(
+        conn, company_id, kind="company_submitted", uri=None, writer="ingest"
+    )
+    claim_inputs = []
+    for json_key in FIELD_MAP:
+        if json_key in _KG_SKIP_KEYS:
+            continue
+        if json_key not in record:
+            continue
+        value = _coerce_value(record[json_key])
+        if not value:
+            continue
+        claim_inputs.append(ClaimInput(field=json_key, value=value))
+    if claim_inputs:
+        write_claims(conn, company_id, source_id, claim_inputs, writer="ingest")
+
+def _maybe_kg_conn(use_kg_flag: bool):
+    """Open a KG connection when --kg is passed OR SUPABASE_DB_URL is set; else
+    return None WITHOUT calling connect(). Guarantees ingest runs fully with no
+    DB connection attempted when KG is disabled."""
+    if not (use_kg_flag or os.environ.get("SUPABASE_DB_URL")):
+        return None
+    return connect()
+
+
 def iter_event_companies(event_folder: Path):
     """Yield (company_dir, state_key, event_label) for an event folder.
 
@@ -453,6 +493,7 @@ def main() -> None:
     ap.add_argument("--state-file", help="Override state file path (default: .processed.json next to ingest.py). Use a separate path to run parallel processes safely.")
     ap.add_argument("--log-file", help="Override run-log CSV path (default: run_log.csv next to ingest.py).")
     ap.add_argument("--root", help="Override CompanyFiles root (default: $HUNNIWELL_COMPANYFILES_ROOT, then /Users/sbhartia/Documents/Hunniwell).")
+    ap.add_argument("--kg", action="store_true", help="Also dual-write each record into the KG (Supabase Postgres). Implied when SUPABASE_DB_URL is set.")
     args = ap.parse_args()
 
     state_path = Path(args.state_file).resolve() if args.state_file else STATE_FILE
@@ -486,6 +527,10 @@ def main() -> None:
     client = anthropic.Anthropic(api_key=anthropic_key)
     state = load_state(state_path)
     ERRORS_DIR.mkdir(exist_ok=True)
+
+    kg_conn = _maybe_kg_conn(args.kg)
+    if kg_conn is not None:
+        print("  KG dual-write enabled.")
 
     log_exists = log_path.exists()
     log_fh = log_path.open("a", newline="", encoding="utf-8")
@@ -578,6 +623,13 @@ def main() -> None:
                 rec_id = write_airtable(record, base_id, table_name, airtable_key)
                 print(f"  -> Airtable {rec_id}   populated={len(populated_keys)} blank={len(blank_keys)}")
                 state.add(state_key)
+                if kg_conn is not None:
+                    try:
+                        kg_dual_write(kg_conn, record, state_key)
+                        kg_conn.commit()
+                    except Exception as ke:
+                        kg_conn.rollback()
+                        print(f"  WARN (kg dual-write): {str(ke)[:200]}")
                 save_state(state, state_path)
                 log_writer.writerow(
                     [state_key, event_name, "ok", rec_id, "", ";".join(populated_keys), ";".join(blank_keys)]
@@ -593,6 +645,8 @@ def main() -> None:
             log_fh.flush()
 
     log_fh.close()
+    if kg_conn is not None:
+        kg_conn.close()
     print(f"\nDone. ok={total_ok} skipped={total_skip} failed={total_fail}")
 
 
