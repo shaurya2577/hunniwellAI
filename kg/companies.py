@@ -6,6 +6,7 @@ _LEGAL_SUFFIX_RE = re.compile(
     r"[\s,\.]+(?:inc|llc|ltd|corp|co)\b\.?$", re.IGNORECASE
 )
 _WS_RE = re.compile(r"\s+")
+_NONALNUM_RE = re.compile(r"[^a-z0-9]+")
 
 
 def _normalize_name(name: str) -> str:
@@ -19,7 +20,9 @@ def _normalize_name(name: str) -> str:
             break
         s = stripped
     s = _WS_RE.sub(" ", s).strip()
-    return s
+    # Collapse to an alphanumeric-only dedup key so spacing/punctuation variants
+    # of the same company merge (e.g. "3D BioFibR Inc" and "3DBioFibR" -> "3dbiofibr").
+    return _NONALNUM_RE.sub("", s)
 
 
 def resolve_company(conn: psycopg.Connection, relpath: str, name: str, event: str) -> str:

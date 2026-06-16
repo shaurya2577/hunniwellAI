@@ -30,7 +30,7 @@ def test_kg_dual_write_creates_company_source_and_claims(conn, monkeypatch):
         rows = cur.fetchall()
         assert len(rows) == 1
         company_id, name_norm, name_raw = rows[0]
-        assert name_norm == "auvi labs"
+        assert name_norm == "auvilabs"
         assert name_raw == "Auvi Labs Inc."
 
         # company_appearances row for relpath (== state_key)
