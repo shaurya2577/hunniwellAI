@@ -29,6 +29,19 @@ def get_voyage_key() -> str:
     return key
 
 
+def get_embeddings_provider() -> str:
+    """Embedding backend for embed(): 'voyage' (default) or 'ollama' (local)."""
+    return (os.environ.get("EMBEDDINGS_PROVIDER") or "voyage").strip().lower()
+
+
+def get_ollama_url() -> str:
+    return os.environ.get("OLLAMA_URL") or "http://localhost:11434"
+
+
+def get_ollama_embed_model() -> str:
+    return os.environ.get("OLLAMA_EMBED_MODEL") or "mxbai-embed-large"
+
+
 def connect() -> psycopg.Connection:
     conn = psycopg.connect(get_db_url())
     register_vector(conn)
