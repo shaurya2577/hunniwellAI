@@ -49,7 +49,8 @@ Net result: the analyst's job becomes "review the rows" instead of "transcribe e
 │   └── pitchbook_converter/     # PitchBook HTML → Word doc (Flask UI)
 │
 ├── scripts/                  # Repo-level operational scripts
-│   └── migrate_companyfiles.py  # Rename messy local folders to canonical OneDrive names
+│   ├── migrate_companyfiles.py  # Rename messy local folders to canonical OneDrive names
+│   └── kg_apply_schema.py       # Stand up the kg/ schema on a Postgres (local or Supabase)
 │
 ├── pyproject.toml            # Single project; all deps consolidated
 ├── README.md                 # this file
