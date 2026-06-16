@@ -36,13 +36,11 @@ keys are involved. This is the fastest way for a new person to confirm the code 
 1. **Env** — `cp .env.example .env` and fill in (see that file's comments; note the two
    `.env` locations). For local embeddings: `ollama pull mxbai-embed-large` and keep
    `EMBEDDINGS_PROVIDER=ollama`. For Voyage: set `EMBEDDINGS_PROVIDER=voyage` + `VOYAGE_API_KEY`.
-2. **Pick a database:**
-   - *Local* — keep using the Docker `hunni-pg` above (set nothing else).
-   - *Supabase* — put the Session-pooler `SUPABASE_DB_URL` in `.env`, then apply the schema:
-     ```python
-     from kg.config import connect, apply_schema
-     c = connect(); c.execute("create extension if not exists vector"); c.commit(); apply_schema(c)
-     ```
+2. **Pick a database and stand up the schema** with one command — `scripts/kg_apply_schema.py`
+   enables pgvector and creates the 4 tables (idempotent, safe to re-run):
+   - *Local* — `python scripts/kg_apply_schema.py` (targets `TEST_DATABASE_URL`, the Docker DB).
+   - *Your own Supabase* — put the Session-pooler `SUPABASE_DB_URL` in `.env`, then
+     `python scripts/kg_apply_schema.py --db-url "$SUPABASE_DB_URL"`.
 3. **Get the source decks** — the per-company files live on OneDrive, not in git. Sync them
    locally and set `HUNNIWELL_COMPANYFILES_ROOT` (or pass `--root`).
 4. **Ingest into the KG** (also writes Airtable):
