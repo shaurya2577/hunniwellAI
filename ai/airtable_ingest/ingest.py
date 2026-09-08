@@ -90,7 +90,7 @@ FIELD_MAP = {
     "equity_raised_m": "Equity Raised ($M)",
     "coming_round": "Coming Round",
     "size_of_round_m": "Size of Round ($M)",
-    "est_close": "Est. Close (Month/Year) ",  # note: Airtable field has a trailing space
+    "est_close": "Est. Close (Month/Year)",  # note: Airtable field has a trailing space
     "key_executives": "Key Executive(s)",
     "ceo_email": "CEO's Email",
     "ceo_cell": "CEO's Cell #",
